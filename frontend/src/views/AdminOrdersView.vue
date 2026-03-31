@@ -1,11 +1,33 @@
 <template>
   <div class="min-h-screen bg-gray-100 p-8 font-sans text-black">
     <div class="max-w-7xl mx-auto">
-      <div class="flex justify-between items-center mb-8">
-        <h1 class="text-4xl font-black italic uppercase text-[#8B0000]">Admin Order Command</h1>
-        <button @click="fetchOrders" class="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold uppercase hover:bg-[#8B0000] transition-all">
-          🔄 Refresh Orders
-        </button>
+      
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+          <h1 class="text-4xl font-black italic uppercase text-[#8B0000]">Admin Command</h1>
+          <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Order Management & Control</p>
+        </div>
+
+        <div class="flex items-center gap-4 w-full md:w-auto">
+          <router-link 
+            to="/admin/messenger" 
+            @click="hasUnread = false"
+            class="relative flex items-center gap-2 bg-black text-white px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-orange-600 transition-all shadow-lg group"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            Customer Messenger
+            <span v-if="hasUnread" class="absolute -top-1 -right-1 flex h-4 w-4">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-4 w-4 bg-red-500 border-2 border-white"></span>
+            </span>
+          </router-link>
+
+          <button @click="fetchOrders" class="bg-white border-2 border-black text-black px-6 py-3 rounded-xl text-xs font-black uppercase hover:bg-gray-100 transition-all">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
 
       <div v-if="orders.length === 0" class="bg-white p-10 rounded-2xl text-center shadow">
@@ -92,10 +114,13 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { store } from '@/store.js';
 import { useRouter } from 'vue-router';
+import { io } from 'socket.io-client';
 
 const router = useRouter();
 const orders = ref([]);
+const hasUnread = ref(false);
 let refreshInterval = null;
+const socket = io('http://localhost:3001');
 
 const fetchOrders = async () => {
   try {
@@ -135,11 +160,21 @@ onMounted(() => {
     router.push('/');
     return;
   }
+  
   fetchOrders();
-  refreshInterval = setInterval(fetchOrders, 30000); // Refreshes every 30s
+  refreshInterval = setInterval(fetchOrders, 30000);
+
+  // SOCKET LOGIC: Listen for new messages globally for the badge
+  socket.on('receive_message', (data) => {
+    // If the message is from a customer, show the unread dot
+    if (data.sender === 'customer') {
+      hasUnread.value = true;
+    }
+  });
 });
 
 onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval);
+  socket.off('receive_message');
 });
 </script>

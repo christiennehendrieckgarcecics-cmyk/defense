@@ -27,7 +27,7 @@
           <div class="space-y-3">
             <input v-model="form.address" type="text" placeholder="HOUSE NUMBER AND STREET*" class="checkout-field" required />
             <input v-model="form.city" type="text" placeholder="TOWN/CITY & ZIP CODE*" class="checkout-field" required />
-            <input v-model="form.landmark" type="text" placeholder="LANDMARK / NOTE TO RIDER" class="checkout-field" />
+            <input v-model="form.landmark" type="text" placeholder="LANDMARK" class="checkout-field" />
             
             <div class="flex items-center bg-white pr-4 border-2 border-transparent focus-within:border-[#FF6B35]">
               <input v-model="form.pickupDate" type="text" placeholder="PICKUP DATE (MM/DD/YYYY)*" class="checkout-field w-full" required />

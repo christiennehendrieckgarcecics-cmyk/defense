@@ -42,7 +42,7 @@
         </div>
 
         <div class="mt-6 pt-6 border-t-4 border-black">
-          <p class="font-black italic text-xl mb-4 uppercase">Package Contents:</p>
+          <p class="font-black italic text-xl mb-4 uppercase">Package Contents (In thousands):</p>
           <div class="space-y-3">
             <div v-for="(item, index) in orderData.items" :key="index" 
                  class="font-bold uppercase flex justify-between items-center border-b-2 border-gray-100 pb-2">

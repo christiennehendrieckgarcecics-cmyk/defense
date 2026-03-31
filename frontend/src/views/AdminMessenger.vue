@@ -1,0 +1,185 @@
+<template>
+  <div class="flex h-screen bg-gray-100 font-sans">
+    <div class="w-1/3 bg-white border-r border-gray-200 flex flex-col shadow-lg">
+      <div class="p-6 bg-black text-white flex justify-between items-center">
+        <h2 class="text-2xl font-black italic uppercase tracking-tighter">Inbound Chats</h2>
+        <button @click="fetchChatList" class="hover:rotate-180 transition-transform duration-500">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto">
+        <div 
+          v-for="chat in chatList" :key="chat.order_id"
+          @click="selectChat(chat.order_id)"
+          :class="['p-4 border-b cursor-pointer hover:bg-orange-50 transition-all border-l-4', 
+                  selectedOrderId === chat.order_id ? 'bg-orange-100 border-orange-500' : 'border-transparent']"
+        >
+          <div class="flex justify-between items-center">
+            <h4 class="font-black text-black uppercase text-sm">User: #{{ chat.order_id }}</h4>
+            <span class="text-[10px] text-gray-400 font-bold">{{ formatTime(chat.created_at) }}</span>
+          </div>
+          <p class="text-xs text-gray-600 truncate mt-1 font-medium italic">
+            {{ chat.sender_type === 'admin' ? 'You: ' : '' }}{{ chat.message_text }}
+          </p>
+        </div>
+
+        <div v-if="chatList.length === 0" class="p-10 text-center text-gray-400 font-bold uppercase text-xs tracking-widest">
+          No active messages
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 flex flex-col bg-white">
+      <div v-if="selectedOrderId" class="flex flex-col h-full">
+        <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shadow-sm">
+          <h3 class="font-black text-black uppercase tracking-widest">Chatting with User #{{ selectedOrderId }}</h3>
+          <span class="flex items-center text-[10px] font-black text-green-500 uppercase">
+            <span class="h-2 w-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+            Connected
+          </span>
+        </div>
+
+        <div ref="chatBox" class="flex-1 overflow-y-auto p-6 space-y-4 bg-[#f4f4f4] custom-scrollbar">
+          <div v-for="msg in messages" :key="msg.id" 
+               :class="['flex flex-col', msg.sender === 'admin' ? 'items-end' : 'items-start']">
+            <div :class="[
+              'max-w-[75%] px-4 py-2 rounded-[1.2rem] text-sm font-bold border-2 shadow-sm',
+              msg.sender === 'admin' ? 'bg-black text-white border-black' : 'bg-white text-black border-gray-300'
+            ]">
+              {{ msg.message }}
+            </div>
+            <span class="text-[9px] uppercase font-black text-gray-400 mt-1 px-2">
+              {{ msg.sender === 'admin' ? 'Admin' : 'Customer' }}
+            </span>
+          </div>
+        </div>
+
+        <div class="p-4 border-t border-gray-200 bg-white">
+          <div class="flex space-x-2 max-w-5xl mx-auto w-full">
+            <input 
+              v-model="newMessage"
+              @keyup.enter="sendMessage"
+              type="text" 
+              placeholder="Type your reply..."
+              class="flex-1 border-2 border-black rounded-full px-6 py-3 text-sm focus:outline-none focus:border-orange-500 font-bold shadow-inner"
+            />
+            <button @click="sendMessage" class="bg-orange-500 text-white px-8 rounded-full font-black uppercase hover:bg-black transition-all transform active:scale-95 shadow-md">
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-300 bg-gray-50">
+        <div class="p-8 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 mb-4 opacity-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <p class="font-black uppercase tracking-[0.2em] text-gray-400">Select a chat to respond</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, nextTick } from 'vue';
+import { io } from 'socket.io-client';
+import axios from 'axios';
+
+const socket = io('http://localhost:3001');
+const chatList = ref([]);
+const messages = ref([]);
+const selectedOrderId = ref(null);
+const newMessage = ref("");
+const chatBox = ref(null);
+
+// Fetch the sidebar list of users
+const fetchChatList = async () => {
+  try {
+    const res = await axios.get('http://localhost:3001/api/admin/chats');
+    chatList.value = res.data;
+  } catch (e) {
+    console.error("Error fetching chat list:", e);
+  }
+};
+
+// Select a customer
+const selectChat = async (orderId) => {
+  selectedOrderId.value = String(orderId); // Ensure it's a string
+  
+  // Join the customer's unique room
+  socket.emit('join_chat', String(orderId));
+  
+  try {
+    // Load database history
+    const res = await axios.get(`http://localhost:3001/api/chat/${orderId}`);
+    messages.value = res.data;
+    scrollToBottom();
+  } catch (e) {
+    console.error("Error loading chat history:", e);
+  }
+};
+
+// Send message to the joined room
+const sendMessage = () => {
+  if (!newMessage.value.trim() || !selectedOrderId.value) return;
+
+  const payload = {
+    orderId: String(selectedOrderId.value),
+    sender: 'admin',
+    message: newMessage.value
+  };
+
+  // Emit to server. Server will save to DB and then broadcast back to us.
+  socket.emit('send_message', payload);
+  
+  newMessage.value = "";
+};
+
+// Handle incoming real-time messages
+socket.on('receive_message', (data) => {
+  // If the message belongs to the room we are CURRENTLY looking at
+  if (String(data.orderId) === String(selectedOrderId.value)) {
+    messages.value.push(data);
+    scrollToBottom();
+  }
+  
+  // Always update sidebar preview when any message arrives
+  fetchChatList();
+});
+
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatBox.value) {
+      chatBox.value.scrollTop = chatBox.value.scrollHeight;
+    }
+  });
+};
+
+const formatTime = (dateStr) => {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+onMounted(fetchChatList);
+</script>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+</style>

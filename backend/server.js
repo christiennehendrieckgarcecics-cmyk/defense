@@ -2,6 +2,9 @@ const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
 const path = require('path');
+const http = require('http'); 
+const { Server } = require('socket.io'); 
+
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
@@ -24,6 +27,93 @@ db.connect((err) => {
         return; 
     }
     console.log('✅ Connected to MySQL Database');
+});
+
+// --- CREATE HTTP SERVER & SOCKET.IO ---
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*", 
+        methods: ["GET", "POST"]
+    }
+});
+
+// --- SOCKET.IO LOGIC ---
+io.on('connection', (socket) => {
+    console.log(`⚡ New Connection: ${socket.id}`);
+
+    // Join a specific chat room
+    socket.on('join_chat', (orderId) => {
+        const room = String(orderId);
+        socket.join(room);
+        console.log(`👤 Socket ${socket.id} joined room: ${room}`);
+    });
+
+    // Listen for incoming messages
+    socket.on('send_message', (data) => {
+        const { orderId, sender, message } = data;
+        
+        console.log(`📩 Message Received for Room ${orderId}: "${message}" from ${sender}`);
+
+        // 1. Save to Database
+        const sql = "INSERT INTO chat_messages (order_id, sender_type, message_text) VALUES (?, ?, ?)";
+        db.query(sql, [String(orderId), sender, message], (err, result) => {
+            if (err) {
+                console.error("❌ DATABASE INSERT ERROR:", err.message);
+                return;
+            }
+            
+            console.log(`✅ Message saved to DB (ID: ${result.insertId})`);
+
+            const messagePayload = {
+                id: result.insertId,
+                orderId: String(orderId),
+                sender,
+                message,
+                created_at: new Date()
+            };
+            
+            // 2. Broadcast to everyone in the room (Customer + Admin)
+            io.to(String(orderId)).emit('receive_message', messagePayload);
+        });
+    });
+
+    socket.on('disconnect', () => {
+        console.log('🔌 User Disconnected', socket.id);
+    });
+});
+
+// --- CHAT API ROUTES ---
+
+// Get specific chat history
+app.get('/api/chat/:orderId', (req, res) => {
+    const orderId = req.params.orderId;
+    const sql = "SELECT id, order_id as orderId, sender_type as sender, message_text as message, created_at FROM chat_messages WHERE order_id = ? ORDER BY created_at ASC";
+    
+    db.query(sql, [orderId], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// Admin Route: Get list of unique conversations
+app.get('/api/admin/chats', (req, res) => {
+    // This query gets the latest message from every unique sender/room
+    const sql = `
+        SELECT m1.order_id, m1.message_text, m1.sender_type, m1.created_at 
+        FROM chat_messages m1
+        WHERE m1.id IN (
+            SELECT MAX(id) FROM chat_messages GROUP BY order_id
+        )
+        ORDER BY m1.created_at DESC
+    `;
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error("❌ Error fetching admin chat list:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(results);
+    });
 });
 
 // --- AUTH ROUTES ---
@@ -54,7 +144,7 @@ app.post('/api/login', (req, res) => {
     });
 });
 
-// --- ADMIN ROUTES ---
+// --- ADMIN ORDER ROUTES ---
 
 app.get('/api/admin/orders', (req, res) => {
     const sql = "SELECT * FROM orders ORDER BY id DESC";
@@ -80,30 +170,15 @@ app.post('/api/admin/update-order', (req, res) => {
 
 // --- CUSTOMER TRACKING UPDATES ---
 
-// FIX: Updated to ensure all rider fields are captured
 app.post('/api/orders/:id/driver-link', (req, res) => {
     const orderId = req.params.id;
     const { driver_link, rider_name, rider_contact } = req.body;
 
-    // Log the incoming data to the terminal for debugging
-    console.log(`\n--- Incoming Rider Details for Order #${orderId} ---`);
-    console.log(`Link: ${driver_link}`);
-    console.log(`Name: ${rider_name}`);
-    console.log(`Phone: ${rider_contact}\n`);
-
     const sql = "UPDATE orders SET driver_link = ?, rider_name = ?, rider_contact = ? WHERE id = ?";
     
     db.query(sql, [driver_link, rider_name, rider_contact, orderId], (err, result) => {
-        if (err) {
-            console.error("❌ SQL Error:", err.message);
-            return res.status(500).json({ error: err.message });
-        }
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: "Order not found" });
-        }
-
-        console.log("✅ Database updated successfully");
+        if (err) return res.status(500).json({ error: err.message });
+        if (result.affectedRows === 0) return res.status(404).json({ error: "Order not found" });
         res.json({ message: "Rider details shared with Admin!" });
     });
 });
@@ -169,6 +244,7 @@ app.get('/api/orders/:id', (req, res) => {
 });
 
 const PORT = 3001; 
-app.listen(PORT, () => {
-    console.log(`\n🔥 BACKEND RUNNING ON http://localhost:${PORT}\n`);
+server.listen(PORT, () => {
+    console.log(`\n🔥 BACKEND RUNNING ON http://localhost:${PORT}`);
+    console.log(`⚡ SOCKET.IO ENABLED\n`);
 });

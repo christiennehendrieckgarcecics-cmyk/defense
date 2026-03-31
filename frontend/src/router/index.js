@@ -39,11 +39,19 @@ const router = createRouter({
       component: () => import('../views/ResetPasswordView.vue') 
     },
 
-    // NEW: ADMIN ORDERS PAGE (PROTECTED - ADMIN ONLY)
+    // ADMIN ORDERS PAGE (PROTECTED - ADMIN ONLY)
     {
       path: '/admin/orders',
       name: 'admin-orders',
       component: () => import('../views/AdminOrdersView.vue'),
+      meta: { requiresAuth: true, requiresAdmin: true }
+    },
+
+    // NEW: ADMIN MESSENGER (PROTECTED - ADMIN ONLY)
+    {
+      path: '/admin/messenger',
+      name: 'admin-messenger',
+      component: () => import('../views/AdminMessenger.vue'),
       meta: { requiresAuth: true, requiresAdmin: true }
     },
 
