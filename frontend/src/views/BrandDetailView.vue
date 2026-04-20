@@ -1,16 +1,10 @@
 <template>
   <main class="bg-white min-h-screen relative font-sans">
     <div class="border-b border-gray-300">
-      <div class="max-w-7xl mx-auto px-4 flex space-x-12 py-6">
-        <button class="font-black text-2xl uppercase border-b-[6px] border-black pb-1">
+      <div class="max-w-7xl mx-auto px-4 flex justify-center py-6">
+        <h2 class="font-black text-2xl uppercase border-b-[6px] border-black pb-1 tracking-tighter italic">
           Latest sneakers
-        </button>
-        <button class="font-black text-2xl uppercase text-gray-400 hover:text-black transition-colors">
-          men
-        </button>
-        <button class="font-black text-2xl uppercase text-gray-400 hover:text-black transition-colors">
-          women
-        </button>
+        </h2>
       </div>
     </div>
 
@@ -78,7 +72,7 @@
 
           <div class="w-full md:w-1/2 bg-[#A3420E] rounded-[50px] p-10 text-white flex flex-col justify-between">
             <div>
-              <h2 class="text-5xl font-black italic tracking-tighter mb-8 uppercase">SIZE/ S</h2>
+              <h2 class="text-5xl font-black italic tracking-tighter mb-8 uppercase">SIZE / S</h2>
               <div class="flex flex-wrap gap-4 mb-10">
                 <button 
                   v-for="size in [selectedShoe.size1, selectedShoe.size2, selectedShoe.size3].filter(s => s)" 
@@ -105,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'; // Added onMounted and watch
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { store } from '@/store.js'; 
 
@@ -114,7 +108,6 @@ const router = useRouter();
 const selectedShoe = ref(null);
 const activeSize = ref('');
 
-// TRACK CURRENT BRAND FOR "ADD MORE" LOGIC
 const updateStoredBrand = () => {
   if (route.params.brandName) {
     store.lastBrandViewed = route.params.brandName;
@@ -171,6 +164,7 @@ const addToCart = () => {
     store.add(selectedShoe.value, activeSize.value || selectedShoe.value.size1);
     selectedShoe.value = null;
     activeSize.value = '';
+    store.isCartOpen = true;
   }
 };
 

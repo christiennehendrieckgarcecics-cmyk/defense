@@ -32,6 +32,13 @@ A full-stack e-commerce platform for sneakers featuring real-time admin-customer
 └── README.md
 
 ##
+.env
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=soles_1800
+
+##
 cd backend
 npm install
 node server.js

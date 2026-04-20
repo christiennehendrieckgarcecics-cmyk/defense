@@ -57,12 +57,20 @@
         </div>
 
         <div class="relative hidden sm:block">
-          <input type="text" class="bg-white text-black px-3 py-1 pr-10 rounded-sm text-sm outline-none w-48 lg:w-64 border-none" placeholder="Search..."/>
-          <button class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-800">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <input 
+            v-model="store.searchQuery"
+            type="text" 
+            class="bg-white text-black px-3 py-1.5 pr-10 rounded-sm text-sm outline-none w-48 lg:w-64 border-none shadow-inner" 
+            placeholder="Search sneakers..."
+          />
+          <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
+            <button v-if="store.searchQuery" @click="store.searchQuery = ''" class="text-gray-400 hover:text-black mr-1">
+              <span class="text-lg leading-none">&times;</span>
+            </button>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-          </button>
+          </div>
         </div>
       </div>
     </div>
@@ -75,7 +83,6 @@
         </div>
         
         <div class="bg-white mx-2 mb-2 rounded-[2rem] h-[400px] flex flex-col p-4 relative">
-          
           <div ref="chatContainer" class="flex-1 overflow-y-auto space-y-3 mb-4 pr-2 custom-scrollbar">
             <div v-if="chatMessages.length === 0" class="text-center text-gray-400 text-[10px] mt-10 uppercase font-bold tracking-widest">
               How can we help you?
@@ -171,21 +178,15 @@ const chatMessages = ref([]);
 const newChatMessage = ref("");
 const chatContainer = ref(null);
 
-// Connect to socket
 const socket = io('http://localhost:3001');
 
-// Consistent Room ID: Using User ID or 'guest'
 const chatRoomId = computed(() => {
   return store.user?.id ? String(store.user.id) : 'guest';
 });
 
 onMounted(() => {
-  // Join the chat room on mount
   socket.emit('join_chat', chatRoomId.value);
-
-  // Listen for messages from server (including our own confirmed messages)
   socket.on('receive_message', (data) => {
-    // Only add if it matches our current room
     if (String(data.orderId) === chatRoomId.value) {
       chatMessages.value.push(data);
       scrollToBottom();
@@ -193,12 +194,10 @@ onMounted(() => {
   });
 });
 
-// Re-join room if user logs in/out
 watch(chatRoomId, (newId) => {
   socket.emit('join_chat', newId);
 });
 
-// Load history when chat is opened
 watch(isChatOpen, async (open) => {
   if (open) {
     try {
@@ -213,16 +212,12 @@ watch(isChatOpen, async (open) => {
 
 const sendChatMessage = () => {
   if (!newChatMessage.value.trim()) return;
-
   const payload = {
     orderId: chatRoomId.value,
     sender: 'customer',
     message: newChatMessage.value
   };
-
-  // Emit to server (The server will broadcast this back to us via 'receive_message')
   socket.emit('send_message', payload);
-
   newChatMessage.value = "";
 };
 
@@ -258,7 +253,6 @@ const handleLogout = () => {
 </script>
 
 <style scoped>
-/* Custom Scrollbar for Chat */
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }

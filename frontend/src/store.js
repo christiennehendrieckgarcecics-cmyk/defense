@@ -4,12 +4,14 @@ export const store = reactive({
   cart: JSON.parse(localStorage.getItem('cart')) || [],
   isCartOpen: false, 
   lastBrandViewed: '', 
+  searchQuery: '', // NEW: Holds the search text from the Navbar
   lastOrder: JSON.parse(localStorage.getItem('latestOrder')) || null,
   user: JSON.parse(localStorage.getItem('user')) || null,
 
   // --- Cart Methods ---
   add(shoe, size) {
-    this.cart.push({ ...shoe, selectedSize: size });
+    // Add item to cart with a unique ID to help with list rendering/removal
+    this.cart.push({ ...shoe, selectedSize: size, cartId: Date.now() });
     this.persistCart();
     this.isCartOpen = true; 
   },
@@ -41,7 +43,8 @@ export const store = reactive({
     this.user = null;
     this.isCartOpen = false;
     this.cart = [];
-    localStorage.clear(); // Clear all
+    this.searchQuery = ''; // Reset search on logout
+    localStorage.clear(); 
   },
 
   setLastOrder(orderData) {
@@ -52,6 +55,9 @@ export const store = reactive({
   // --- Getters ---
   get isLoggedIn() { return !!this.user; },
 
+  // Returns the number of items in the cart for the Navbar badge
+  get count() { return this.cart.length; },
+
   get total() {
     const sum = this.cart.reduce((acc, item) => {
       const priceClean = String(item.price).replace(/[^0-9.]/g, '');
@@ -60,11 +66,11 @@ export const store = reactive({
     return sum.toLocaleString('en-US', { minimumFractionDigits: 2 });
   },
 
-  // NEW: Helper for DB saving (Returns 1200.00 as a Number)
+  // Helper for DB saving (Returns total as a Number)
   get numericTotal() {
     return this.cart.reduce((acc, item) => {
       const priceClean = String(item.price).replace(/[^0-9.]/g, '');
       return acc + (parseFloat(priceClean) || 0);
-    }, 0) + 8.50; // Including convenience fee
+    }, 0);
   }
 });

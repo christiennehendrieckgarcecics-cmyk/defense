@@ -1,9 +1,9 @@
 const express = require('express');
-const mysql = require('mysql2');
 const cors = require('cors');
 const path = require('path');
 const http = require('http'); 
 const { Server } = require('socket.io'); 
+const { createClient } = require('@supabase/supabase-js');
 
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
@@ -11,23 +11,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- DATABASE CONNECTION ---
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'soles_1800',
-    port: 3306,
-    autocommit: true 
-});
+// --- SUPABASE CONNECTION ---
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
 
-db.connect((err) => {
-    if (err) { 
-        console.error('❌ DB Connection Error:', err.message); 
-        return; 
-    }
-    console.log('✅ Connected to MySQL Database');
-});
+if (!supabaseUrl || !supabaseKey) {
+    console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY in .env file!');
+    process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+console.log('✅ Connected to Supabase Database');
 
 // --- CREATE HTTP SERVER & SOCKET.IO ---
 const server = http.createServer(app);
@@ -50,32 +44,39 @@ io.on('connection', (socket) => {
     });
 
     // Listen for incoming messages
-    socket.on('send_message', (data) => {
+    socket.on('send_message', async (data) => {
         const { orderId, sender, message } = data;
         
         console.log(`📩 Message Received for Room ${orderId}: "${message}" from ${sender}`);
 
-        // 1. Save to Database
-        const sql = "INSERT INTO chat_messages (order_id, sender_type, message_text) VALUES (?, ?, ?)";
-        db.query(sql, [String(orderId), sender, message], (err, result) => {
-            if (err) {
-                console.error("❌ DATABASE INSERT ERROR:", err.message);
-                return;
-            }
-            
-            console.log(`✅ Message saved to DB (ID: ${result.insertId})`);
+        // 1. Save to Supabase
+        const { data: insertedData, error } = await supabase
+            .from('chat_messages')
+            .insert([{ 
+                order_id: String(orderId), 
+                sender_type: sender, 
+                message_text: message 
+            }])
+            .select();
 
-            const messagePayload = {
-                id: result.insertId,
-                orderId: String(orderId),
-                sender,
-                message,
-                created_at: new Date()
-            };
-            
-            // 2. Broadcast to everyone in the room (Customer + Admin)
-            io.to(String(orderId)).emit('receive_message', messagePayload);
-        });
+        if (error) {
+            console.error("❌ SUPABASE INSERT ERROR:", error.message);
+            return;
+        }
+
+        const newMsg = insertedData[0];
+        console.log(`✅ Message saved to Supabase (ID: ${newMsg.id})`);
+
+        const messagePayload = {
+            id: newMsg.id,
+            orderId: newMsg.order_id, // Map for frontend
+            sender: newMsg.sender_type, // Map for frontend
+            message: newMsg.message_text, // Map for frontend
+            created_at: newMsg.created_at
+        };
+        
+        // 2. Broadcast to everyone in the room (Customer + Admin)
+        io.to(String(orderId)).emit('receive_message', messagePayload);
     });
 
     socket.on('disconnect', () => {
@@ -86,108 +87,153 @@ io.on('connection', (socket) => {
 // --- CHAT API ROUTES ---
 
 // Get specific chat history
-app.get('/api/chat/:orderId', (req, res) => {
+app.get('/api/chat/:orderId', async (req, res) => {
     const orderId = req.params.orderId;
-    const sql = "SELECT id, order_id as orderId, sender_type as sender, message_text as message, created_at FROM chat_messages WHERE order_id = ? ORDER BY created_at ASC";
     
-    db.query(sql, [orderId], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
+    const { data, error } = await supabase
+        .from('chat_messages')
+        .select('id, order_id, sender_type, message_text, created_at')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: true });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Map the database columns to what your frontend expects
+    const formattedChats = data.map(chat => ({
+        id: chat.id,
+        orderId: chat.order_id,
+        sender: chat.sender_type,
+        message: chat.message_text,
+        created_at: chat.created_at
+    }));
+
+    res.json(formattedChats);
 });
 
 // Admin Route: Get list of unique conversations
-app.get('/api/admin/chats', (req, res) => {
-    // This query gets the latest message from every unique sender/room
-    const sql = `
-        SELECT m1.order_id, m1.message_text, m1.sender_type, m1.created_at 
-        FROM chat_messages m1
-        WHERE m1.id IN (
-            SELECT MAX(id) FROM chat_messages GROUP BY order_id
-        )
-        ORDER BY m1.created_at DESC
-    `;
-    db.query(sql, (err, results) => {
-        if (err) {
-            console.error("❌ Error fetching admin chat list:", err.message);
-            return res.status(500).json({ error: err.message });
+app.get('/api/admin/chats', async (req, res) => {
+    // Fetch all chats ordered by newest first
+    const { data, error } = await supabase
+        .from('chat_messages')
+        .select('id, order_id, sender_type, message_text, created_at')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error("❌ Error fetching admin chat list:", error.message);
+        return res.status(500).json({ error: error.message });
+    }
+
+    // Filter to keep only the latest message for each unique order_id
+    const uniqueChats = [];
+    const seenOrders = new Set();
+    
+    for (const msg of data) {
+        if (!seenOrders.has(msg.order_id)) {
+            seenOrders.add(msg.order_id);
+            uniqueChats.push(msg);
         }
-        res.json(results);
-    });
+    }
+
+    res.json(uniqueChats);
 });
 
 // --- AUTH ROUTES ---
 
-app.post('/api/signup', (req, res) => {
+app.post('/api/signup', async (req, res) => {
     const { username, email, password, securityPin } = req.body;
     const cleanEmail = email ? email.toLowerCase().trim() : '';
-    const sql = "INSERT INTO users (username, email, password, security_pin, role) VALUES (?, ?, ?, ?, 'user')";
-    db.query(sql, [username, cleanEmail, password, securityPin], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.status(201).json({ message: "User registered successfully!" });
-    });
+    
+    const { error } = await supabase
+        .from('users')
+        .insert([{ 
+            username, 
+            email: cleanEmail, 
+            password, 
+            security_pin: securityPin, 
+            role: 'user' 
+        }]);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json({ message: "User registered successfully!" });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
     const { email, password, securityPin } = req.body;
     const cleanEmail = email ? email.toLowerCase().trim() : '';
-    const sql = "SELECT id, username, email, role FROM users WHERE LOWER(email) = ? AND password = ? AND security_pin = ?";
-    db.query(sql, [cleanEmail, password, securityPin], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (results.length > 0) {
-            let user = results[0];
-            if (!user.role || user.role.trim() === "") user.role = 'user';
-            res.json({ user: user });
-        } else {
-            res.status(401).json({ error: "Invalid credentials" });
-        }
-    });
+
+    const { data, error } = await supabase
+        .from('users')
+        .select('id, username, email, role')
+        .ilike('email', cleanEmail) // Case-insensitive exact match
+        .eq('password', password)
+        .eq('security_pin', securityPin);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    if (data && data.length > 0) {
+        let user = data[0];
+        if (!user.role || user.role.trim() === "") user.role = 'user';
+        res.json({ user: user });
+    } else {
+        res.status(401).json({ error: "Invalid credentials" });
+    }
 });
 
 // --- ADMIN ORDER ROUTES ---
 
-app.get('/api/admin/orders', (req, res) => {
-    const sql = "SELECT * FROM orders ORDER BY id DESC";
-    db.query(sql, (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const formattedOrders = results.map(order => {
-            let items = [];
-            try { items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { items = []; }
-            return { ...order, items };
-        });
-        res.json(formattedOrders);
+app.get('/api/admin/orders', async (req, res) => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('id', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const formattedOrders = data.map(order => {
+        let items = [];
+        try { items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { items = []; }
+        return { ...order, items };
     });
+    
+    res.json(formattedOrders);
 });
 
-app.post('/api/admin/update-order', (req, res) => {
+app.post('/api/admin/update-order', async (req, res) => {
     const { orderId, status, courier_name, tracking_number } = req.body;
-    const sql = `UPDATE orders SET status = ?, courier_name = ?, tracking_number = ? WHERE id = ?`;
-    db.query(sql, [status, courier_name, tracking_number, orderId], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: "Order updated successfully!" });
-    });
+    
+    const { error } = await supabase
+        .from('orders')
+        .update({ status, courier_name, tracking_number })
+        .eq('id', orderId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ message: "Order updated successfully!" });
 });
 
 // --- CUSTOMER TRACKING UPDATES ---
 
-app.post('/api/orders/:id/driver-link', (req, res) => {
+app.post('/api/orders/:id/driver-link', async (req, res) => {
     const orderId = req.params.id;
     const { driver_link, rider_name, rider_contact } = req.body;
 
-    const sql = "UPDATE orders SET driver_link = ?, rider_name = ?, rider_contact = ? WHERE id = ?";
+    const { data, error } = await supabase
+        .from('orders')
+        .update({ driver_link, rider_name, rider_contact })
+        .eq('id', orderId)
+        .select();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data || data.length === 0) return res.status(404).json({ error: "Order not found" });
     
-    db.query(sql, [driver_link, rider_name, rider_contact, orderId], (err, result) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (result.affectedRows === 0) return res.status(404).json({ error: "Order not found" });
-        res.json({ message: "Rider details shared with Admin!" });
-    });
+    res.json({ message: "Rider details shared with Admin!" });
 });
 
 // --- ORDER ROUTES ---
 
-app.post('/api/orders', (req, res) => {
+app.post('/api/orders', async (req, res) => {
     const data = req.body;
-    const orderObj = {
+    
+    const newOrder = {
         email: (data.email || 'guest@unknown.com').toLowerCase().trim(),
         first_name: data.firstName || data.first_name || 'N/A',
         last_name: data.lastName || data.last_name || 'N/A',
@@ -199,51 +245,58 @@ app.post('/api/orders', (req, res) => {
         shipping_method: data.shippingType || data.shipping_method || 'Standard',
         payment_method: data.payment_method || data.paymentMethod || 'Cash',
         total: parseFloat(String(data.finalTotal || data.total).replace(/[^0-9.]/g, '')) || 0,
-        items_json: JSON.stringify(data.items || [])
+        items_json: JSON.stringify(data.items || []),
+        status: 'Preparing your order'
     };
 
-    const sql = `INSERT INTO orders 
-        (email, first_name, last_name, phone, address, city, landmark, pickup_date, shipping_method, total, payment_method, items_json, status) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Preparing your order')`;
+    const { data: insertedOrder, error } = await supabase
+        .from('orders')
+        .insert([newOrder])
+        .select('id');
 
-    db.query(sql, [
-        orderObj.email, orderObj.first_name, orderObj.last_name, orderObj.phone,
-        orderObj.address, orderObj.city, orderObj.landmark, orderObj.pickup_date,
-        orderObj.shipping_method, orderObj.total, orderObj.payment_method, orderObj.items_json
-    ], (err, result) => {
-        if (err) return res.status(500).json({ error: "Database error" });
-        res.status(200).json({ message: "Success", orderId: result.insertId });
-    });
+    if (error) return res.status(500).json({ error: "Database error", details: error.message });
+    res.status(200).json({ message: "Success", orderId: insertedOrder[0].id });
 });
 
-app.get('/api/user-orders/:email', (req, res) => {
+app.get('/api/user-orders/:email', async (req, res) => {
     const searchEmail = req.params.email ? req.params.email.toLowerCase().trim() : '';
-    const sql = "SELECT * FROM orders WHERE LOWER(email) = ? ORDER BY id DESC";
-    db.query(sql, [searchEmail], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        const formattedOrders = results.map(order => {
-            let items = [];
-            try { items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { items = []; }
-            return { ...order, items, total: parseFloat(order.total) };
-        });
-        res.json(formattedOrders);
+    
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .ilike('email', searchEmail)
+        .order('id', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const formattedOrders = data.map(order => {
+        let items = [];
+        try { items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { items = []; }
+        return { ...order, items, total: parseFloat(order.total) };
     });
+    res.json(formattedOrders);
 });
 
-app.get('/api/orders/:id', (req, res) => {
-    db.query("SELECT * FROM orders WHERE id = ?", [req.params.id], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        if (results.length > 0) {
-            const order = results[0];
-            try { order.items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { order.items = []; }
-            res.json(order);
-        } else {
-            res.status(404).json({ error: "Order not found" });
-        }
-    });
+app.get('/api/orders/:id', async (req, res) => {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', req.params.id)
+        .single(); // Forces returning a single object instead of an array
+
+    // Supabase returns PGRST116 when no rows are found with .single()
+    if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
+    
+    if (data) {
+        const order = data;
+        try { order.items = order.items_json ? JSON.parse(order.items_json) : []; } catch (e) { order.items = []; }
+        res.json(order);
+    } else {
+        res.status(404).json({ error: "Order not found" });
+    }
 });
 
-const PORT = 3001; 
+const PORT = process.env.PORT || 3001; 
 server.listen(PORT, () => {
     console.log(`\n🔥 BACKEND RUNNING ON http://localhost:${PORT}`);
     console.log(`⚡ SOCKET.IO ENABLED\n`);
