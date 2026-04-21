@@ -132,7 +132,37 @@ app.get('/api/admin/chats', async (req, res) => {
         }
     }
 
-    res.json(uniqueChats);
+    const numericUserIds = uniqueChats
+        .map(chat => Number.parseInt(chat.order_id, 10))
+        .filter(id => Number.isInteger(id));
+
+    let usersById = new Map();
+
+    if (numericUserIds.length > 0) {
+        const { data: users, error: usersError } = await supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', numericUserIds);
+
+        if (usersError) {
+            console.error("âŒ Error fetching user details for chats:", usersError.message);
+            return res.status(500).json({ error: usersError.message });
+        }
+
+        usersById = new Map(users.map(user => [String(user.id), user]));
+    }
+
+    const enrichedChats = uniqueChats.map(chat => {
+        const matchedUser = usersById.get(String(chat.order_id));
+
+        return {
+            ...chat,
+            customer_name: matchedUser?.username || `Guest #${chat.order_id}`,
+            customer_email: matchedUser?.email || 'guest@unknown.com'
+        };
+    });
+
+    res.json(enrichedChats);
 });
 
 // --- AUTH ROUTES ---
