@@ -13,9 +13,17 @@
       
       <div class="bg-white text-black p-8 border-8 border-black shadow-[20px_20px_0px_0px_black]">
         <div class="flex justify-between items-start mb-6">
-          <h2 class="text-4xl font-black text-orange-600 uppercase italic">
-            Status: {{ orderData.status || 'Preparing' }}
-          </h2>
+          <div>
+            <h2 class="text-4xl font-black text-orange-600 uppercase italic">
+              Status: {{ orderData.status || 'Preparing' }}
+            </h2>
+            <p
+              class="mt-2 inline-block px-4 py-2 rounded-full font-black uppercase text-sm"
+              :class="(orderData.payment_status || 'Not Paid') === 'Paid' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'"
+            >
+              Payment: {{ orderData.payment_status || 'Not Paid' }}
+            </p>
+          </div>
           <span class="bg-black text-white px-4 py-1 font-bold uppercase text-sm">
             Order #{{ orderData.id }}
           </span>
@@ -42,7 +50,7 @@
         </div>
 
         <div class="mt-6 pt-6 border-t-4 border-black">
-          <p class="font-black italic text-xl mb-4 uppercase">Package Contents (In thousands):</p>
+          <p class="font-black italic text-xl mb-4 uppercase">Package Contents:</p>
           <div class="space-y-3">
             <div v-for="(item, index) in orderData.items" :key="index" 
                  class="font-bold uppercase flex justify-between items-center border-b-2 border-gray-100 pb-2">
@@ -51,7 +59,9 @@
                 <span>{{ item.name }}</span>
                 <span class="ml-2 text-sm opacity-60">[{{ item.selectedSize }}]</span>
               </div>
-              <span class="font-black">₱{{ parseFloat(item.price).toLocaleString() }}</span>
+              <span class="font-black">
+                ₱{{ formatPrice(item.price) }}
+              </span>
             </div>
           </div>
 
@@ -95,9 +105,9 @@
           
           <div class="mt-10 flex justify-end">
             <div class="text-right">
-              <p class="uppercase font-bold text-gray-400 text-sm italic leading-none">Amount Paid</p>
+              <p class="uppercase font-bold text-gray-400 text-sm italic leading-none">Order Total</p>
               <p class="text-5xl font-black italic text-orange-600 tracking-tighter">
-                ₱{{ formatTotal(orderData.total) }}
+                ₱{{ formatPrice(orderData.total) }}
               </p>
             </div>
           </div>
@@ -137,10 +147,27 @@ const riderInfo = reactive({
   contact: '',
 });
 
-const formatTotal = (val) => {
-  if (!val) return '0.00';
-  const numeric = typeof val === 'string' ? parseFloat(val.replace(/[^0-9.]/g, '')) : val;
-  return numeric.toLocaleString('en-US', { minimumFractionDigits: 2 });
+/**
+ * Universal formatter for prices.
+ * It handles raw numbers, strings, and converts "thousands" shorthand (e.g. 1.5) 
+ * into full amounts (1,500.00).
+ */
+const formatPrice = (val) => {
+  if (!val && val !== 0) return '0.00';
+  
+  // Clean up string if necessary (remove ₱ or commas)
+  let numeric = typeof val === 'string' ? parseFloat(val.replace(/[^0-9.]/g, '')) : val;
+  
+  // Logic: If the amount is very small (like 1.5 or 5.0), multiply by 1000
+  // Adjust the '1000' threshold if you sell items actually priced below 1000 pesos
+  if (numeric < 1000 && numeric > 0) {
+    numeric = numeric * 1000;
+  }
+  
+  return numeric.toLocaleString('en-US', { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  });
 };
 
 const submitRiderDetails = async () => {
@@ -149,13 +176,11 @@ const submitRiderDetails = async () => {
       return;
   }
 
-  // Log exactly what we're sending for debugging
   const payload = { 
     driver_link: riderInfo.lalamoveLink,
     rider_name: riderInfo.name,
     rider_contact: riderInfo.contact
   };
-  console.log("Submitting Rider Details:", payload);
 
   try {
     const response = await fetch(`http://localhost:3001/api/orders/${orderData.value.id}/driver-link`, {
@@ -169,11 +194,9 @@ const submitRiderDetails = async () => {
       alert("Success! Your rider info has been sent to the Admin.");
     } else {
       const errorMsg = await response.text();
-      console.error("Server Error:", errorMsg);
       alert("Server error: " + errorMsg);
     }
   } catch (error) {
-    console.error("Fetch Connection Error:", error);
     alert("Connection error. Check if your backend is running.");
   }
 };
@@ -191,15 +214,12 @@ const fetchOrder = async () => {
       const data = await response.json();
       orderData.value = data;
       
-      // SYNC: Pre-fill fields if they already exist in the database
       if (data.driver_link) {
         riderInfo.lalamoveLink = data.driver_link;
         riderInfo.name = data.rider_name || '';
         riderInfo.contact = data.rider_contact || '';
         isSubmitted.value = true;
       }
-    } else {
-        console.error("Order not found or Server error");
     }
   } catch (error) {
     console.error("Fetch Error:", error);

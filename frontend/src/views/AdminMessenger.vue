@@ -18,7 +18,10 @@
                   selectedOrderId === chat.order_id ? 'bg-orange-100 border-orange-500' : 'border-transparent']"
         >
           <div class="flex justify-between items-center">
-            <h4 class="font-black text-black uppercase text-sm">User: #{{ chat.order_id }}</h4>
+            <div class="min-w-0 pr-3">
+              <h4 class="font-black text-black uppercase text-sm truncate">{{ chat.customer_name }}</h4>
+              <p class="text-[10px] text-gray-500 font-bold normal-case truncate">{{ chat.customer_email }}</p>
+            </div>
             <span class="text-[10px] text-gray-400 font-bold">{{ formatTime(chat.created_at) }}</span>
           </div>
           <p class="text-xs text-gray-600 truncate mt-1 font-medium italic">
@@ -35,7 +38,10 @@
     <div class="flex-1 flex flex-col bg-white">
       <div v-if="selectedOrderId" class="flex flex-col h-full">
         <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shadow-sm">
-          <h3 class="font-black text-black uppercase tracking-widest">Chatting with User #{{ selectedOrderId }}</h3>
+          <div>
+            <h3 class="font-black text-black uppercase tracking-widest">{{ selectedChatTitle }}</h3>
+            <p class="text-[11px] text-gray-500 font-bold normal-case">{{ selectedChatEmail }}</p>
+          </div>
           <span class="flex items-center text-[10px] font-black text-green-500 uppercase">
             <span class="h-2 w-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
             Connected
@@ -86,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue';
+import { ref, onMounted, nextTick, computed } from 'vue';
 import { io } from 'socket.io-client';
 import axios from 'axios';
 
@@ -96,6 +102,18 @@ const messages = ref([]);
 const selectedOrderId = ref(null);
 const newMessage = ref("");
 const chatBox = ref(null);
+
+const selectedChat = computed(() =>
+  chatList.value.find(chat => String(chat.order_id) === String(selectedOrderId.value)) || null
+);
+
+const selectedChatTitle = computed(() =>
+  selectedChat.value?.customer_name || `User #${selectedOrderId.value}`
+);
+
+const selectedChatEmail = computed(() =>
+  selectedChat.value?.customer_email || ''
+);
 
 // Fetch the sidebar list of users
 const fetchChatList = async () => {

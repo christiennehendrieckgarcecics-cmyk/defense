@@ -94,6 +94,26 @@
               </div>
 
               <div class="pt-4 border-t border-gray-200">
+                <label class="text-[10px] font-black uppercase text-gray-500 mb-2 block">Payment Status</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    @click="setPaymentStatus(order, 'Paid')"
+                    class="py-3 rounded-xl border-2 font-black uppercase text-xs transition-all"
+                    :class="(order.payment_status || 'Not Paid') === 'Paid' ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-green-600'"
+                  >
+                    Paid
+                  </button>
+                  <button
+                    @click="setPaymentStatus(order, 'Not Paid')"
+                    class="py-3 rounded-xl border-2 font-black uppercase text-xs transition-all"
+                    :class="(order.payment_status || 'Not Paid') === 'Not Paid' ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-red-600'"
+                  >
+                    Not Paid
+                  </button>
+                </div>
+              </div>
+
+              <div class="pt-4 border-t border-gray-200">
                 <label class="text-[10px] font-black uppercase text-gray-500 mb-1 block">Official Tracking (e.g., J&T)</label>
                 <input v-model="order.courier_name" placeholder="Courier Name" class="w-full p-3 border-2 border-gray-200 rounded-t-xl text-sm outline-none focus:border-[#8B0000]" />
                 <input v-model="order.tracking_number" placeholder="Tracking Number" class="w-full p-3 border-2 border-gray-200 rounded-b-xl text-sm border-t-0 outline-none focus:border-[#8B0000]" />
@@ -140,6 +160,7 @@ const updateOrder = async (order) => {
     body: JSON.stringify({
         orderId: order.id,
         status: order.status,
+        payment_status: order.payment_status || 'Not Paid',
         courier_name: order.courier_name,
         tracking_number: order.tracking_number
     })
@@ -148,6 +169,11 @@ const updateOrder = async (order) => {
     alert(`Order #${order.id} Updated!`);
     fetchOrders(); 
   }
+};
+
+const setPaymentStatus = (order, paymentStatus) => {
+  order.payment_status = paymentStatus;
+  updateOrder(order);
 };
 
 const copyToClipboard = (text) => {

@@ -30,8 +30,14 @@
             <input v-model="form.landmark" type="text" placeholder="LANDMARK" class="checkout-field" />
             
             <div class="flex items-center bg-white pr-4 border-2 border-transparent focus-within:border-[#FF6B35]">
-              <input v-model="form.pickupDate" type="text" placeholder="PICKUP DATE (MM/DD/YYYY)*" class="checkout-field w-full" required />
-              <span class="text-black text-xl">📅</span>
+              <input 
+                v-model="form.pickupDate" 
+                type="date" 
+                :min="today"
+                class="checkout-field w-full cursor-pointer" 
+                required 
+              />
+              <span class="text-black text-xl pointer-events-none">📅</span>
             </div>
           </div>
         </section>
@@ -50,9 +56,24 @@
             <label class="flex items-center justify-end gap-3 cursor-pointer" :class="shippingType === 'LOCAL PICK-UP' ? 'text-orange-400' : ''">
               <input type="radio" v-model="shippingType" value="LOCAL PICK-UP" class="accent-orange-500 w-4 h-4" /> LOCAL PICK-UP
             </label>
-            <label class="flex items-center justify-end gap-3 cursor-pointer" :class="shippingType === 'LALAMOVE' ? 'text-orange-400' : ''">
-              <input type="radio" v-model="shippingType" value="LALAMOVE" class="accent-orange-500 w-4 h-4" /> LALAMOVE
+            
+            <label 
+              class="flex items-center justify-end gap-3 transition-opacity" 
+              :class="[
+                shippingType === 'LALAMOVE' ? 'text-orange-400' : '',
+                selectedPayment === 'Cash' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              ]"
+            >
+              <input 
+                type="radio" 
+                v-model="shippingType" 
+                value="LALAMOVE" 
+                :disabled="selectedPayment === 'Cash'"
+                class="accent-orange-500 w-4 h-4" 
+              /> 
+              LALAMOVE
             </label>
+            <p v-if="selectedPayment === 'Cash'" class="text-[9px] text-white opacity-80">* LALAMOVE NOT AVAILABLE FOR CASH PAYMENTS</p>
           </div>
         </div>
 
@@ -73,10 +94,6 @@
             <span>Subtotal</span>
             <span>₱{{ store.total }}</span>
           </div>
-          <div class="flex justify-between text-sm opacity-70">
-            <span>Convenience Fee</span>
-            <span>₱8.50</span>
-          </div>
           <div class="flex justify-between text-4xl pt-4 border-t-2 border-white mt-4">
             <span>Total</span>
             <span>₱{{ calculateFinalTotal() }}</span>
@@ -96,8 +113,12 @@
           <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-2xl">G)</div>
           <h2 class="text-4xl font-bold text-blue-600 uppercase italic">GCash</h2>
         </div>
-        <div class="w-64 h-64 mx-auto mb-8 border-4 border-gray-100 flex items-center justify-center bg-white p-2">
+        <div class="w-64 h-64 mx-auto mb-4 border-4 border-gray-100 flex items-center justify-center bg-white p-2">
           <img src="../../latestsneakers/gcash-qr.png" alt="GCash QR Code" class="w-full h-full object-contain" />
+        </div>
+        <div class="mb-8 space-y-1">
+          <p class="text-xl font-black uppercase tracking-tight text-gray-800">CE***C C.</p>
+          <p class="text-lg font-bold text-blue-600 tracking-widest">+63 927 428 ****</p>
         </div>
         <button @click="finalizeOrder" class="w-full bg-[#FF6B35] text-white py-4 rounded-2xl text-2xl font-black uppercase italic hover:bg-orange-600 shadow-lg">
           PAID - FINALIZE ORDER
@@ -108,7 +129,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue';
+import { reactive, ref, onMounted, watch } from 'vue';
 import { store } from '@/store.js';
 import { useRouter } from 'vue-router';
 
@@ -116,6 +137,9 @@ const router = useRouter();
 const showPaymentModal = ref(false);
 const shippingType = ref("LOCAL PICK-UP");
 const selectedPayment = ref("E-Wallet");
+
+// Added today's date for validation
+const today = new Date().toISOString().split('T')[0];
 
 const form = reactive({
   email: '', 
@@ -135,12 +159,26 @@ onMounted(() => {
   }
 });
 
+watch(selectedPayment, (newVal) => {
+  if (newVal === 'Cash' && shippingType.value === 'LALAMOVE') {
+    shippingType.value = 'LOCAL PICK-UP';
+    alert("Lalamove delivery is not available for Cash payments. Method switched to Local Pick-up.");
+  }
+});
+
 const calculateFinalTotal = () => {
   const sub = parseFloat(store.total.replace(/,/g, '')) || 0;
-  return (sub + 8.50).toLocaleString('en-US', { minimumFractionDigits: 2 });
+  return sub.toLocaleString('en-US', { minimumFractionDigits: 2 });
 };
 
 const handlePlaceOrder = () => {
+  if (store.cart.length > 3) {
+    alert("Maximum of 3 shoes allowed per checkout.");
+    store.cart = store.cart.slice(0, 3);
+    store.persistCart();
+    return;
+  }
+
   if (!form.email || !form.phone || !form.firstName || !form.lastName || !form.address || !form.city || !form.pickupDate) {
     alert("Please fill in all required fields marked with *");
     return;
@@ -153,7 +191,6 @@ const handlePlaceOrder = () => {
 };
 
 const finalizeOrder = async () => {
-  // CRITICAL: Ensure key names match exactly what server.js extracts from req.body
   const orderData = {
     email: form.email.toLowerCase().trim(),
     phone: form.phone,
@@ -163,7 +200,7 @@ const finalizeOrder = async () => {
     city: form.city,
     landmark: form.landmark || '',
     pickupDate: form.pickupDate,
-    shippingType: shippingType.value, // Make sure server.js handles 'shippingType'
+    shippingType: shippingType.value,
     payment_method: selectedPayment.value,
     finalTotal: calculateFinalTotal(),
     items: store.cart.map(item => ({
@@ -193,12 +230,9 @@ const finalizeOrder = async () => {
         state: { orderData: completeOrder } 
       });
     } else {
-      // This will now show you the specific error from the DB
-      console.error("DB Error:", result.detail || result.error);
       alert("Order Failed: " + (result.detail || result.error));
     }
   } catch (error) {
-    console.error("Network Error:", error);
     alert("Could not connect to server. Ensure server.js is running.");
   }
 };
@@ -218,5 +252,12 @@ const finalizeOrder = async () => {
 }
 .checkout-field:focus {
   border-color: #FF6B35;
+}
+
+/* Custom styling for the date picker icon and input */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0);
+    padding: 5px;
 }
 </style>

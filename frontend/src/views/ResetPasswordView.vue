@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-[#B33A00] flex items-center justify-center px-4 py-10 font-sans selection:bg-orange-500">
     <div class="max-w-md w-full">
-      <button @click="$router.push('/login')" class="text-white font-black uppercase italic mb-4 flex items-center gap-2 hover:underline">
+      <button @click="router.push('/login')" class="text-white font-black uppercase italic mb-4 flex items-center gap-2 hover:underline">
         <span>←</span> Back to Login
       </button>
 
@@ -11,7 +11,7 @@
           <p class="text-[10px] font-bold uppercase opacity-60">Enter your details to secure your account</p>
         </div>
 
-        <form @submit.prevent="handleResetStub" class="space-y-6">
+        <form @submit.prevent="handleReset" class="space-y-6">
           <div class="border-b-2 border-gray-200 py-2 flex items-center">
             <span class="mr-3 text-xl">✉️</span>
             <input 
@@ -73,18 +73,44 @@ const resetData = reactive({
   confirmPassword: ''
 });
 
-const handleResetStub = () => {
+const handleReset = async () => {
   localError.value = '';
 
-  // Simple GUI validation
+  // 1. Frontend Validation
   if (resetData.newPassword !== resetData.confirmPassword) {
     localError.value = "Passwords do not match!";
     return;
   }
 
-  // Simulation Success
-  alert("GUI CHECK: Password reset request for " + resetData.email + " successful! (Database update skipped for now)");
-  router.push('/login');
+  if (resetData.newPassword.length < 6) {
+    localError.value = "Password must be at least 6 characters!";
+    return;
+  }
+
+  try {
+    // 2. Actual API call to your backend
+    const response = await fetch('http://localhost:3001/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: resetData.email,
+        newPassword: resetData.newPassword
+      }),
+    });
+
+    const result = await response.json();
+
+    if (response.ok) {
+      alert("SUCCESS: Your password has been updated in Supabase!");
+      router.push('/login');
+    } else {
+      // Shows error if email doesn't exist or database fails
+      localError.value = result.error || "Failed to reset password.";
+    }
+  } catch (error) {
+    console.error("Network Error:", error);
+    localError.value = "Connection Error: Is the server.js running?";
+  }
 };
 </script>
 
@@ -95,6 +121,7 @@ const handleResetStub = () => {
   font-weight: 600;
   text-transform: uppercase;
   font-size: 0.875rem;
+  background: transparent;
 }
 
 .reset-field::placeholder {

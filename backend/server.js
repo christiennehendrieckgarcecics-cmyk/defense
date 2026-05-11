@@ -112,7 +112,6 @@ app.get('/api/chat/:orderId', async (req, res) => {
 
 // Admin Route: Get list of unique conversations
 app.get('/api/admin/chats', async (req, res) => {
-    // Fetch all chats ordered by newest first
     const { data, error } = await supabase
         .from('chat_messages')
         .select('id, order_id, sender_type, message_text, created_at')
@@ -123,7 +122,6 @@ app.get('/api/admin/chats', async (req, res) => {
         return res.status(500).json({ error: error.message });
     }
 
-    // Filter to keep only the latest message for each unique order_id
     const uniqueChats = [];
     const seenOrders = new Set();
     
@@ -134,7 +132,37 @@ app.get('/api/admin/chats', async (req, res) => {
         }
     }
 
-    res.json(uniqueChats);
+    const numericUserIds = uniqueChats
+        .map(chat => Number.parseInt(chat.order_id, 10))
+        .filter(id => Number.isInteger(id));
+
+    let usersById = new Map();
+
+    if (numericUserIds.length > 0) {
+        const { data: users, error: usersError } = await supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', numericUserIds);
+
+        if (usersError) {
+            console.error("âŒ Error fetching user details for chats:", usersError.message);
+            return res.status(500).json({ error: usersError.message });
+        }
+
+        usersById = new Map(users.map(user => [String(user.id), user]));
+    }
+
+    const enrichedChats = uniqueChats.map(chat => {
+        const matchedUser = usersById.get(String(chat.order_id));
+
+        return {
+            ...chat,
+            customer_name: matchedUser?.username || `Guest #${chat.order_id}`,
+            customer_email: matchedUser?.email || 'guest@unknown.com'
+        };
+    });
+
+    res.json(enrichedChats);
 });
 
 // --- AUTH ROUTES ---
@@ -164,7 +192,7 @@ app.post('/api/login', async (req, res) => {
     const { data, error } = await supabase
         .from('users')
         .select('id, username, email, role')
-        .ilike('email', cleanEmail) // Case-insensitive exact match
+        .ilike('email', cleanEmail) 
         .eq('password', password)
         .eq('security_pin', securityPin);
 
@@ -176,6 +204,26 @@ app.post('/api/login', async (req, res) => {
         res.json({ user: user });
     } else {
         res.status(401).json({ error: "Invalid credentials" });
+    }
+});
+
+// --- RESET PASSWORD ROUTE ---
+app.post('/api/reset-password', async (req, res) => {
+    const { email, newPassword } = req.body;
+    const cleanEmail = email ? email.toLowerCase().trim() : '';
+
+    const { data, error } = await supabase
+        .from('users')
+        .update({ password: newPassword })
+        .ilike('email', cleanEmail)
+        .select();
+
+    if (error) return res.status(500).json({ error: error.message });
+    
+    if (data && data.length > 0) {
+        res.json({ message: "Password updated successfully!" });
+    } else {
+        res.status(404).json({ error: "Email not found in our records." });
     }
 });
 
@@ -199,11 +247,11 @@ app.get('/api/admin/orders', async (req, res) => {
 });
 
 app.post('/api/admin/update-order', async (req, res) => {
-    const { orderId, status, courier_name, tracking_number } = req.body;
+    const { orderId, status, payment_status, courier_name, tracking_number } = req.body;
     
     const { error } = await supabase
         .from('orders')
-        .update({ status, courier_name, tracking_number })
+        .update({ status, payment_status, courier_name, tracking_number })
         .eq('id', orderId);
 
     if (error) return res.status(500).json({ error: error.message });
@@ -244,6 +292,7 @@ app.post('/api/orders', async (req, res) => {
         pickup_date: data.pickupDate || data.pickup_date || '',
         shipping_method: data.shippingType || data.shipping_method || 'Standard',
         payment_method: data.payment_method || data.paymentMethod || 'Cash',
+        payment_status: data.payment_status || ((data.payment_method || data.paymentMethod) === 'E-Wallet' ? 'Paid' : 'Not Paid'),
         total: parseFloat(String(data.finalTotal || data.total).replace(/[^0-9.]/g, '')) || 0,
         items_json: JSON.stringify(data.items || []),
         status: 'Preparing your order'
@@ -282,9 +331,8 @@ app.get('/api/orders/:id', async (req, res) => {
         .from('orders')
         .select('*')
         .eq('id', req.params.id)
-        .single(); // Forces returning a single object instead of an array
+        .single(); 
 
-    // Supabase returns PGRST116 when no rows are found with .single()
     if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
     
     if (data) {
@@ -297,6 +345,15 @@ app.get('/api/orders/:id', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001; 
+server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Stop the existing backend process or set a different PORT in backend/.env.`);
+        process.exit(1);
+    }
+
+    throw error;
+});
+
 server.listen(PORT, () => {
     console.log(`\n🔥 BACKEND RUNNING ON http://localhost:${PORT}`);
     console.log(`⚡ SOCKET.IO ENABLED\n`);

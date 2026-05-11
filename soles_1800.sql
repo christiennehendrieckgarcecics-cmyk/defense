@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS orders (
     shipping_method VARCHAR(50),
     total DECIMAL(10, 2),
     payment_method VARCHAR(50),
+    payment_status VARCHAR(20) DEFAULT 'Not Paid',
     items_json JSON,
     status VARCHAR(50) DEFAULT 'Preparing your order',
     driver_link VARCHAR(255),

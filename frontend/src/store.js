@@ -1,7 +1,10 @@
 import { reactive } from 'vue';
 
+const MAX_CART_ITEMS = 3;
+const savedCart = JSON.parse(localStorage.getItem('cart')) || [];
+
 export const store = reactive({
-  cart: JSON.parse(localStorage.getItem('cart')) || [],
+  cart: savedCart.slice(0, MAX_CART_ITEMS),
   isCartOpen: false, 
   lastBrandViewed: '', 
   searchQuery: '', // NEW: Holds the search text from the Navbar
@@ -10,6 +13,11 @@ export const store = reactive({
 
   // --- Cart Methods ---
   add(shoe, size) {
+    if (this.cart.length >= MAX_CART_ITEMS) {
+      alert(`Maximum of ${MAX_CART_ITEMS} shoes allowed per checkout.`);
+      return;
+    }
+
     // Add item to cart with a unique ID to help with list rendering/removal
     this.cart.push({ ...shoe, selectedSize: size, cartId: Date.now() });
     this.persistCart();
