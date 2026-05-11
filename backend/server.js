@@ -286,6 +286,8 @@ app.post('/api/orders', async (req, res) => {
         first_name: data.firstName || data.first_name || 'N/A',
         last_name: data.lastName || data.last_name || 'N/A',
         phone: data.phone || 'N/A',
+        emergency_name: data.emergencyName || data.emergency_name || 'N/A',
+        emergency_number: data.emergencyNumber || data.emergency_number || 'N/A',
         address: data.address || 'N/A',
         city: data.city || 'N/A',
         landmark: data.landmark || '',

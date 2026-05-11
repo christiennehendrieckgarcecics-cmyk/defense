@@ -30,6 +30,82 @@
         </div>
       </div>
 
+      <section class="mb-8 space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div v-for="metric in salesMetrics" :key="metric.label" class="bg-white rounded-2xl p-5 shadow border border-gray-100">
+            <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">{{ metric.label }}</p>
+            <div class="mt-3 flex items-end justify-between gap-3">
+              <p class="text-3xl font-black text-black">{{ metric.value }}</p>
+              <span
+                class="text-[10px] font-black uppercase px-3 py-1 rounded-full"
+                :class="metric.positive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+              >
+                {{ metric.change }}
+              </span>
+            </div>
+            <p class="mt-3 text-xs font-bold text-gray-400">{{ metric.note }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div class="xl:col-span-2 bg-white rounded-2xl p-6 shadow border border-gray-100">
+            <div class="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <h2 class="text-lg font-black uppercase text-black">Shoe Sales Overview</h2>
+                <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sample monthly pairs sold</p>
+              </div>
+              <span class="bg-[#8B0000] text-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Demo Data</span>
+            </div>
+
+            <div class="h-64 flex items-end gap-3 border-b-2 border-l-2 border-gray-200 px-2 pt-4">
+              <div v-for="month in monthlySales" :key="month.month" class="flex-1 min-w-0 h-full flex flex-col justify-end items-center gap-2">
+                <div class="w-full flex items-end justify-center h-full">
+                  <div
+                    class="w-full max-w-12 bg-[#8B0000] rounded-t-lg hover:bg-black transition-all relative group"
+                    :style="{ height: `${month.percent}%` }"
+                  >
+                    <span class="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                      {{ month.sales }} pairs
+                    </span>
+                  </div>
+                </div>
+                <p class="text-[10px] font-black uppercase text-gray-400">{{ month.month }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-6 shadow border border-gray-100">
+            <div class="mb-5">
+              <h2 class="text-lg font-black uppercase text-black">Top Products</h2>
+              <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Sample product sales</p>
+            </div>
+
+            <div class="space-y-4">
+              <div v-for="product in topProducts" :key="product.name">
+                <div class="flex justify-between gap-3 mb-2">
+                  <p class="text-sm font-black text-black truncate">{{ product.name }}</p>
+                  <p class="text-sm font-black text-[#8B0000]">{{ product.sales }}</p>
+                </div>
+                <div class="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div class="h-full rounded-full" :class="product.color" :style="{ width: `${product.percent}%` }"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-2 gap-3">
+              <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <p class="text-[10px] font-black uppercase text-gray-400">Best Size</p>
+                <p class="text-2xl font-black text-black mt-1">US 9</p>
+              </div>
+              <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                <p class="text-[10px] font-black uppercase text-gray-400">Hot Brand</p>
+                <p class="text-2xl font-black text-black mt-1">Nike</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div v-if="orders.length === 0" class="bg-white p-10 rounded-2xl text-center shadow">
         <p class="text-gray-500 uppercase font-bold">No orders found in database.</p>
       </div>
@@ -50,6 +126,9 @@
                 </span>
               </div>
               <p class="text-sm text-gray-600">{{ order.email }} | {{ order.phone }}</p>
+              <p class="text-sm mt-1 text-red-700 font-bold">
+                Emergency: {{ order.emergency_name || 'N/A' }} | {{ order.emergency_number || 'N/A' }}
+              </p>
               <p class="text-sm mt-2"><strong>Address:</strong> {{ order.address }}, {{ order.city }}</p>
               
               <div class="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
@@ -141,6 +220,31 @@ const orders = ref([]);
 const hasUnread = ref(false);
 let refreshInterval = null;
 const socket = io('http://localhost:3001');
+
+const salesMetrics = [
+  { label: 'Total Sales', value: 'P128.4K', change: '+18%', positive: true, note: 'Estimated revenue this month' },
+  { label: 'Pairs Sold', value: '342', change: '+24%', positive: true, note: 'Across all sneaker categories' },
+  { label: 'Avg. Order', value: 'P3.7K', change: '+6%', positive: true, note: 'Sample average basket value' },
+  { label: 'Returns', value: '7', change: '-3%', positive: true, note: 'Lower than last month' }
+];
+
+const monthlySales = [
+  { month: 'Jan', sales: 42, percent: 42 },
+  { month: 'Feb', sales: 58, percent: 58 },
+  { month: 'Mar', sales: 51, percent: 51 },
+  { month: 'Apr', sales: 76, percent: 76 },
+  { month: 'May', sales: 64, percent: 64 },
+  { month: 'Jun', sales: 89, percent: 89 },
+  { month: 'Jul', sales: 73, percent: 73 },
+  { month: 'Aug', sales: 96, percent: 96 }
+];
+
+const topProducts = [
+  { name: 'Air Jordan Mocha', sales: '86 sold', percent: 92, color: 'bg-[#8B0000]' },
+  { name: 'Adidas Samba OG', sales: '74 sold', percent: 78, color: 'bg-black' },
+  { name: 'New Balance 9060', sales: '62 sold', percent: 66, color: 'bg-orange-500' },
+  { name: 'Puma Speedcat', sales: '48 sold', percent: 52, color: 'bg-blue-600' }
+];
 
 const fetchOrders = async () => {
   try {

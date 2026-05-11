@@ -17,6 +17,10 @@
               <input v-model="form.firstName" type="text" placeholder="FIRST NAME*" class="checkout-field" required />
               <input v-model="form.lastName" type="text" placeholder="LAST NAME*" class="checkout-field" required />
             </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input v-model="form.emergencyName" type="text" placeholder="EMERGENCY CONTACT NAME*" class="checkout-field" required />
+              <input v-model="form.emergencyNumber" type="text" placeholder="EMERGENCY CONTACT NUMBER*" class="checkout-field" required />
+            </div>
           </div>
         </section>
 
@@ -146,6 +150,8 @@ const form = reactive({
   phone: '', 
   firstName: '', 
   lastName: '',
+  emergencyName: '',
+  emergencyNumber: '',
   address: '', 
   city: '', 
   landmark: '', 
@@ -179,7 +185,7 @@ const handlePlaceOrder = () => {
     return;
   }
 
-  if (!form.email || !form.phone || !form.firstName || !form.lastName || !form.address || !form.city || !form.pickupDate) {
+  if (!form.email || !form.phone || !form.firstName || !form.lastName || !form.emergencyName || !form.emergencyNumber || !form.address || !form.city || !form.pickupDate) {
     alert("Please fill in all required fields marked with *");
     return;
   }
@@ -196,6 +202,8 @@ const finalizeOrder = async () => {
     phone: form.phone,
     firstName: form.firstName, 
     lastName: form.lastName,
+    emergencyName: form.emergencyName,
+    emergencyNumber: form.emergencyNumber,
     address: form.address,
     city: form.city,
     landmark: form.landmark || '',

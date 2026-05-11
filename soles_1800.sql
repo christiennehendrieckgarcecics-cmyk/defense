@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS orders (
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     phone VARCHAR(20),
+    emergency_name VARCHAR(100),
+    emergency_number VARCHAR(20),
     address TEXT,
     city VARCHAR(100),
     landmark VARCHAR(255),
